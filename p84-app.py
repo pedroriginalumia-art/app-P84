@@ -21,7 +21,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # 📥 URL direta da planilha no GitHub
-URL_PLANILHA = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/blob/main/DESENHOS%20P84%20REV.xlsx"
+URL_PLANILHA = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/DESENHOS%20P84%20REV.xlsx"
 
 # 📥 Carregar os dados da planilha
 @st.cache_data
@@ -87,6 +87,7 @@ if termo_input:
             st.markdown("---")
     else:
         st.info("Nenhum desenho encontrado com esse trecho.")
+
 
 
 

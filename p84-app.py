@@ -44,7 +44,7 @@ def ordenar_revisoes(revisoes):
 df = carregar_dados(URL_PLANILHA)
 
 # 🔎 Entrada de texto para busca parcial
-termo_input = st.text_input("Digite parte do nome do desenho (ex: 09A-394):")
+termo_input = st.text_input("Digite parte do nome do desenho (ex: M05B-391):")
 
 # 📋 Mostrar sugestões e resultados em tempo real
 if termo_input:
@@ -87,6 +87,7 @@ if termo_input:
             st.markdown("---")
     else:
         st.info("Nenhum desenho encontrado com esse trecho.")
+
 
 
 

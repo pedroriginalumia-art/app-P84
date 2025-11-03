@@ -16,12 +16,12 @@ logo_base64 = base64.b64encode(buffered.getvalue()).decode()
 st.markdown(f"""
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
     <img src="data:image/png;base64,{logo_base64}" width="60"/>
-    <h1 style="margin: 0;">Desenhos P83</h1>
+    <h1 style="margin: 0;">Desenhos P84</h1>
 </div>
 """, unsafe_allow_html=True)
 
 # 📥 URL direta da planilha no GitHub
-URL_PLANILHA = "https://raw.githubusercontent.com/pedroriginalumia-art/app-desenhos-streamlit-/main/DESENHOS%20P83%20REV.xlsx"
+URL_PLANILHA = "https://raw.githubusercontent.com/pedroriginalumia-art/app-desenhos-streamlit-/main/DESENHOS%20P84%20REV.xlsx"
 
 # 📥 Carregar os dados da planilha
 @st.cache_data
@@ -87,6 +87,7 @@ if termo_input:
             st.markdown("---")
     else:
         st.info("Nenhum desenho encontrado com esse trecho.")
+
 
 
 

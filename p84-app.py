@@ -5,24 +5,37 @@ import base64
 from io import BytesIO
 from datetime import timedelta
 import re
-from streamlit.components.v1 import html  # <<< usar o componente HTML
+import requests
+import io
+from streamlit.components.v1 import html  # para renderizar HTML sem problemas de indentação
 
+# =========================
+# CONFIGURAÇÕES
+# =========================
 st.set_page_config(page_title="Desenhos P84", page_icon="📄", layout="centered")
 
+# --- URLs no GitHub (sempre usar RAW nos downloads) ---
 URL_PLANILHA_DESENHOS = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/DESENHOS%20P84%20REV.xlsx"
-WHITELIST_FORMAT = "csv"
-URL_WHITELIST_CSV = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.csv"
+
+WHITELIST_FORMAT = "xlsx"  # "xlsx" (atual) ou "csv"
 URL_WHITELIST_XLSX = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.xlsx"
+URL_WHITELIST_CSV  = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.csv"
+
+# Sessão expira depois de X horas (opcional)
 SESSION_TTL_HOURS = 8
 
+# =========================
+# UTILITÁRIOS
+# =========================
 def carregar_logo_base64(path: str) -> str:
+    """Carrega a imagem e retorna base64 para data:image/png;base64,..."""
     logo = Image.open(path)
     buf = BytesIO()
     logo.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
 def render_logo_titulo(titulo: str, subtitulo: str | None = None):
-    """Renderiza o cabeçalho com HTML puro (sem Markdown), evitando indentação virar code block."""
+    """Cabeçalho com HTML puro (iframe), evitando o parser de Markdown."""
     try:
         logo_b64 = carregar_logo_base64("SEATRIUM.png")
         content = (
@@ -30,17 +43,22 @@ def render_logo_titulo(titulo: str, subtitulo: str | None = None):
             f'  data:image/png;base64,{logo_b64}'
             f'  <div>'
             f'    <h1 style="margin:0;">{titulo}</h1>'
-            f'    {f"<div style=\'font-size:13px;color:#666;margin-top:2px;\'>{subtitulo}</div>" if subtitulo else ""}'
+            f'    {f"<div style=\'font-size:13px;color:#bbb;margin-top:2px;\'>{subtitulo}</div>" if subtitulo else ""}'
             f'  </div>'
             f'</div>'
         )
-        html(content, height=100)  # << renderiza sem passar pelo parser de Markdown
+        html(content, height=150)  # altura suficiente para mostrar tudo
     except Exception:
+        # fallback sem logo
         st.header(titulo)
         if subtitulo:
             st.caption(subtitulo)
 
 def normaliza_matricula(valor: str) -> str:
+    """
+    Mantém somente dígitos; valida 1 a 5 dígitos.
+    Não preenche com zeros; não trunca.
+    """
     if valor is None:
         return ""
     s = re.sub(r"\D", "", str(valor))
@@ -48,13 +66,21 @@ def normaliza_matricula(valor: str) -> str:
         return ""
     return s
 
+# =========================
+# CARGA WHITELIST (CACHE)
+# =========================
 @st.cache_data(ttl=600)
-def carregar_whitelist_csv(url: str) -> pd.DataFrame:
-    df = pd.read_csv(url, dtype=str)
+def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
+    # valida primeiro a URL e baixa conteúdo (compatível com Raw em repositório público)
+    resp = requests.get(url, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Whitelist XLSX não encontrada ({resp.status_code}). Verifique a URL: {url}")
+    content = io.BytesIO(resp.content)
+    df = pd.read_excel(content, dtype=str, engine="openpyxl")
     df.columns = [c.strip().lower() for c in df.columns]
     required = {"matricula", "nome", "funcao"}
     if not required.issubset(df.columns):
-        raise ValueError("A whitelist CSV deve conter as colunas: 'matricula', 'nome', 'funcao'.")
+        raise ValueError("A whitelist XLSX deve conter: 'matricula', 'nome', 'funcao'.")
     df["matricula"] = df["matricula"].apply(normaliza_matricula)
     df = df[df["matricula"] != ""].copy()
     for c in ["nome", "funcao"]:
@@ -62,12 +88,15 @@ def carregar_whitelist_csv(url: str) -> pd.DataFrame:
     return df
 
 @st.cache_data(ttl=600)
-def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
-    df = pd.read_excel(url, dtype=str, engine="openpyxl")
+def carregar_whitelist_csv(url: str) -> pd.DataFrame:
+    resp = requests.get(url, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Whitelist CSV não encontrada ({resp.status_code}). Verifique a URL: {url}")
+    df = pd.read_csv(io.BytesIO(resp.content), dtype=str)
     df.columns = [c.strip().lower() for c in df.columns]
     required = {"matricula", "nome", "funcao"}
     if not required.issubset(df.columns):
-        raise ValueError("A whitelist XLSX deve conter as colunas: 'matricula', 'nome', 'funcao'.")
+        raise ValueError("A whitelist CSV deve conter: 'matricula', 'nome', 'funcao'.")
     df["matricula"] = df["matricula"].apply(normaliza_matricula)
     df = df[df["matricula"] != ""].copy()
     for c in ["nome", "funcao"]:
@@ -75,12 +104,24 @@ def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
     return df
 
 def obter_whitelist() -> pd.DataFrame:
-    return carregar_whitelist_csv(URL_WHITELIST_CSV) if WHITELIST_FORMAT == "csv" else carregar_whitelist_xlsx(URL_WHITELIST_XLSX)
+    if WHITELIST_FORMAT == "xlsx":
+        return carregar_whitelist_xlsx(URL_WHITELIST_XLSX)
+    elif WHITELIST_FORMAT == "csv":
+        return carregar_whitelist_csv(URL_WHITELIST_CSV)
+    else:
+        raise ValueError("Formato de whitelist inválido. Use 'xlsx' ou 'csv'.")
 
+# =========================
+# CARGA PLANILHA DE DESENHOS (CACHE)
+# =========================
 @st.cache_data(ttl=600)
 def carregar_dados_desenhos(url: str) -> pd.DataFrame:
+    # Para arquivos RAW públicos, pd.read_excel com engine openpyxl funciona bem
     return pd.read_excel(url, engine="openpyxl")
 
+# =========================
+# AUTENTICAÇÃO
+# =========================
 def buscar_usuario_por_matricula(m_input: str, wl: pd.DataFrame) -> dict | None:
     m = normaliza_matricula(m_input)
     if m == "":
@@ -131,8 +172,16 @@ def login_view():
                 "funcao": user["funcao"],
                 "login_time": pd.Timestamp.utcnow(),
             })
-            st.success(f"Seja bem-vindo, {user['nome']}!")
-            st.caption(user["funcao"])
+            # Boas-vindas (nome em destaque; função menor)
+            st.markdown(
+                f"""
+                <div style="background:#e7f3ff;border:1px solid #b3d7ff;padding:12px;border-radius:8px;margin-top:8px;">
+                    <div style="font-weight:600;font-size:16px;">Seja bem-vindo, {user['nome']}!</div>
+                    <div style="font-size:13px;color:#555;margin-top:2px;">{user['funcao']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
             st.experimental_rerun()
         else:
             st.error("Matrícula não encontrada na whitelist. Verifique e tente novamente.")
@@ -151,6 +200,9 @@ def top_bar():
             st.success("Você saiu da sessão.")
             st.experimental_rerun()
 
+# =========================
+# LÓGICA DO APP (PROTEGIDA)
+# =========================
 def buscar_desenho(df, termo):
     filtro = df['DESENHO'].astype(str).str.contains(termo, case=False, na=False)
     return df[filtro]
@@ -205,6 +257,9 @@ def main_app():
         else:
             st.info("Nenhum desenho encontrado com esse trecho.")
 
+# =========================
+# ROTEAMENTO
+# =========================
 def run():
     if require_auth():
         main_app()

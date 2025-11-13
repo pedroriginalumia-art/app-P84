@@ -7,7 +7,6 @@ from datetime import timedelta
 import re
 import requests
 import io
-from streamlit.components.v1 import html  # para renderizar HTML sem problemas de indentação
 
 # =========================
 # CONFIGURAÇÕES
@@ -25,8 +24,15 @@ URL_WHITELIST_CSV  = "https://raw.githubusercontent.com/pedroriginalumia-art/app
 SESSION_TTL_HOURS = 8
 
 # =========================
-# UTILITÁRIOS
+# HELPERS
 # =========================
+def safe_rerun():
+    """Usa st.rerun() nas versões novas; cai para st.experimental_rerun() nas antigas."""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
+
 def carregar_logo_base64(path: str) -> str:
     """Carrega a imagem e retorna base64 para data:image/png;base64,..."""
     logo = Image.open(path)
@@ -35,24 +41,76 @@ def carregar_logo_base64(path: str) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 def render_logo_titulo(titulo: str, subtitulo: str | None = None):
-    """Cabeçalho com HTML puro (iframe), evitando o parser de Markdown."""
+    """
+    Cabeçalho com logo e título usando HTML REAL sem indentação (evita virar code block).
+    """
     try:
         logo_b64 = carregar_logo_base64("SEATRIUM.png")
-        content = (
-            f'<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">'
-            f'  data:image/png;base64,{logo_b64}'
-            f'  <div>'
-            f'    <h1 style="margin:0;">{titulo}</h1>'
-            f'    {f"<div style=\'font-size:13px;color:#bbb;margin-top:2px;\'>{subtitulo}</div>" if subtitulo else ""}'
-            f'  </div>'
-            f'</div>'
+        st.markdown(
+f"""<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+data:image/png;base64,{logo_b64}
+<div>
+<h1 style="margin:0;">{titulo}</h1>
+{f'<div style="font-size:13px;color:#bbb;margin-top:2px;">{subtitulo}</div>' if subtitulo else ''}
+</div>
+</div>""",
+            unsafe_allow_html=True
         )
-        html(content, height=150)  # altura suficiente para mostrar tudo
     except Exception:
         # fallback sem logo
         st.header(titulo)
         if subtitulo:
             st.caption(subtitulo)
+
+def get_theme_palette():
+    """
+    Detecta o tema do Streamlit e retorna uma paleta de alto contraste.
+    """
+    base = st.get_option("theme.base") or "dark"  # 'light' ou 'dark'
+    if base == "light":
+        return {
+            "bg": "#EAF4FF",      # fundo claro com leve azul
+            "border": "#1E40AF",  # azul escuro
+            "text": "#0F172A",    # quase preto
+            "muted": "#334155",   # cinza para subtítulos
+            "accent": "#2563EB",  # azul médio
+            "panel_dark": "#EAF4FF",
+            "shadow": "0 2px 8px rgba(30,64,175,0.12)",
+        }
+    else:
+        return {
+            "bg": "#0B1220",      # fundo escuro (alto contraste)
+            "border": "#3B82F6",  # azul vivo
+            "text": "#F8FAFC",    # quase branco
+            "muted": "#CBD5E1",   # cinza claro
+            "accent": "#60A5FA",  # azul claro
+            "panel_dark": "#0B1220",
+            "shadow": "0 2px 12px rgba(0,0,0,0.35)",
+        }
+
+def render_welcome_card(nome: str, funcao: str):
+    """
+    Saudação com alto contraste, adaptada ao tema claro/escuro.
+    """
+    p = get_theme_palette()
+    st.markdown(
+f"""<div style="
+background:{p['panel_dark']};
+border: 1px solid {p['border']};
+padding: 16px;
+border-radius: 12px;
+margin-top: 12px;
+box-shadow: {p['shadow']};
+">
+<div style="font-weight:700; font-size:16px; color:{p['text']}; letter-spacing:0.2px;">
+Seja bem-vindo, <span style="color:{p['accent']};">{nome}</span>!
+</div>
+<div style="font-size:13px; color:{p['muted']}; margin-top:4px;">
+{funcao}
+</div>
+</div>""",
+        unsafe_allow_html=True
+    )
 
 def normaliza_matricula(valor: str) -> str:
     """
@@ -71,7 +129,7 @@ def normaliza_matricula(valor: str) -> str:
 # =========================
 @st.cache_data(ttl=600)
 def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
-    # valida primeiro a URL e baixa conteúdo (compatível com Raw em repositório público)
+    # baixa conteúdo do RAW (compatível com repositórios públicos)
     resp = requests.get(url, timeout=15)
     if resp.status_code != 200:
         raise RuntimeError(f"Whitelist XLSX não encontrada ({resp.status_code}). Verifique a URL: {url}")
@@ -172,33 +230,33 @@ def login_view():
                 "funcao": user["funcao"],
                 "login_time": pd.Timestamp.utcnow(),
             })
-            # Boas-vindas (nome em destaque; função menor)
-            st.markdown(
-                f"""
-                <div style="background:#e7f3ff;border:1px solid #b3d7ff;padding:12px;border-radius:8px;margin-top:8px;">
-                    <div style="font-weight:600;font-size:16px;">Seja bem-vindo, {user['nome']}!</div>
-                    <div style="font-size:13px;color:#555;margin-top:2px;">{user['funcao']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            st.experimental_rerun()
+            # Boas-vindas de alto contraste
+            render_welcome_card(st.session_state["nome"], st.session_state["funcao"])
+            safe_rerun()
         else:
             st.error("Matrícula não encontrada na whitelist. Verifique e tente novamente.")
 
 def top_bar():
     render_logo_titulo("Desenhos P84")
+
+    p = get_theme_palette()
     col1, col2 = st.columns([1, 1])
     with col1:
         nome = st.session_state.get("nome", "—")
         funcao = st.session_state.get("funcao", "")
-        st.caption(f"Usuário: **{nome}**" + (f" • {funcao}" if funcao else ""))
+        st.markdown(
+f"""<div style="font-size:13px; color:{p['muted']};">
+Usuário: <span style="font-weight:600; color:{p['text']};">{nome}</span>
+{f"&nbsp;•&nbsp;<span style='color:{p['muted']};'>{funcao}</span>" if funcao else ""}
+</div>""",
+            unsafe_allow_html=True
+        )
     with col2:
         if st.button("Sair"):
             for k in ["authenticated", "matricula", "nome", "funcao", "login_time"]:
                 st.session_state.pop(k, None)
             st.success("Você saiu da sessão.")
-            st.experimental_rerun()
+            safe_rerun()
 
 # =========================
 # LÓGICA DO APP (PROTEGIDA)
@@ -242,7 +300,7 @@ def main_app():
                             else "background-color:#e0e0e0;color:#000000;"
                         )
                         cols[i].markdown(
-                            f"<div style='{destaque}padding:6px;border-radius:6px;text-align:center;font-weight:bold;'>{rev}</div>",
+f"""<div style='{destaque}padding:6px;border-radius:6px;text-align:center;font-weight:bold;'>{rev}</div>""",
                             unsafe_allow_html=True
                         )
                     for i, rev in enumerate(revisoes_ordenadas):

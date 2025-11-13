@@ -4,6 +4,7 @@ from datetime import timedelta
 import re
 import requests
 import io
+from streamlit.components.v1 import html  # componente para overlay
 
 # =========================
 # CONFIGURAÇÕES
@@ -32,29 +33,31 @@ def safe_rerun():
         st.experimental_rerun()
 
 def get_theme_palette():
-    """
-    Detecta o tema do Streamlit e retorna uma paleta de alto contraste.
-    """
-    base = st.get_option("theme.base") or "dark"  # 'light' ou 'dark'
+    """Paleta de alto contraste para claro/escuro."""
+    base = st.get_option("theme.base") or "dark"
     if base == "light":
         return {
-            "bg": "rgba(15, 23, 42, 0.35)",    # backdrop translúcido escuro
-            "panel": "#FFFFFF",                # caixa clara
-            "border": "#1E40AF",               # azul escuro
-            "text": "#0F172A",                 # quase preto
-            "muted": "#334155",                # cinza para subtítulos
-            "accent": "#2563EB",               # azul médio
-            "shadow": "0 8px 24px rgba(30,64,175,0.20)",
+            "backdrop": "rgba(15, 23, 42, 0.35)",
+            "panel": "#FFFFFF",
+            "border": "#1E40AF",
+            "text": "#0F172A",
+            "muted": "#334155",
+            "accent": "#2563EB",
+            "shadow": "0 10px 30px rgba(30,64,175,0.20)",
+            "button_bg": "#1E40AF",
+            "button_text": "#FFFFFF",
         }
     else:
         return {
-            "bg": "rgba(0, 0, 0, 0.50)",       # backdrop translúcido escuro
-            "panel": "#0B1220",                # caixa escura
-            "border": "#3B82F6",               # azul vivo
-            "text": "#F8FAFC",                 # quase branco
-            "muted": "#CBD5E1",                # cinza claro
-            "accent": "#60A5FA",               # azul claro
-            "shadow": "0 8px 28px rgba(0,0,0,0.35)",
+            "backdrop": "rgba(0, 0, 0, 0.55)",
+            "panel": "#0B1220",
+            "border": "#3B82F6",
+            "text": "#F8FAFC",
+            "muted": "#CBD5E1",
+            "accent": "#60A5FA",
+            "shadow": "0 10px 34px rgba(0,0,0,0.40)",
+            "button_bg": "#3B82F6",
+            "button_text": "#0B1220",
         }
 
 def render_logo_titulo(titulo: str, subtitulo: str | None = None):
@@ -72,104 +75,8 @@ def render_logo_titulo(titulo: str, subtitulo: str | None = None):
         if subtitulo:
             st.caption(subtitulo)
 
-def render_welcome_overlay(nome: str, funcao: str):
-    """
-    Sobreposição (overlay) de boas-vindas que cobre o conteúdo e só fecha no botão FECHAR.
-    - Usa CSS fixo para backdrop e para a caixa central com alto contraste.
-    - O botão FECHAR fica na parte inferior da caixa, em CAIXA ALTA.
-    """
-    p = get_theme_palette()
-
-    # CSS do overlay
-    st.markdown(
-        f"""
-        <style>
-        /* Backdrop cobrindo toda a viewport */
-        .overlay-backdrop {{
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: {p['bg']};
-            backdrop-filter: blur(2px);
-            z-index: 9998;
-        }}
-        /* Caixa central */
-        .overlay-box {{
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: min(640px, 88vw);
-            background: {p['panel']};
-            border: 1px solid {p['border']};
-            border-radius: 12px;
-            box-shadow: {p['shadow']};
-            z-index: 9999;
-            padding: 18px 20px 16px 20px;
-        }}
-        .overlay-title {{
-            font-weight: 700;
-            font-size: 18px;
-            color: {p['text']};
-            letter-spacing: 0.2px;
-            margin: 0 0 6px 0;
-        }}
-        .overlay-sub {{
-            font-size: 13px;
-            color: {p['muted']};
-            margin: 0 0 12px 0;
-        }}
-        /* Botão FECHAR (alinhado ao fim) */
-        .overlay-actions {{
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 8px;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Backdrop e caixa
-    st.markdown('<div class="overlay-backdrop"></div>', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="overlay-box">
-            <div class="overlay-title">Seja bem-vindo, <span style="color:{p['accent']};">{nome}</span>!</div>
-            <div class="overlay-sub">{funcao}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Botão FECHAR (renderizado logo após, mas estilizado para parecer dentro da caixa)
-    # Dica: CSS direciona o botão para colar visualmente à caixa (posição natural de fluxo na página)
-    btn_css = f"""
-        <style>
-        div[data-testid="stHorizontalBlock"] div.stButton button {{
-            background: {p['border']};
-            color: #FFFFFF;
-            text-transform: uppercase;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            padding: 8px 14px;
-            border-radius: 8px;
-            border: 0;
-            box-shadow: none;
-        }}
-        </style>
-    """
-    st.markdown(btn_css, unsafe_allow_html=True)
-    # Usamos colunas vazias para posicionar o botão horizontalmente abaixo da caixa
-    left, center, right = st.columns([0.30, 0.40, 0.30])
-    with center:
-        if st.button("FECHAR", key="overlay_close"):
-            st.session_state["welcome_open"] = False
-            safe_rerun()
-
 def normaliza_matricula(valor: str) -> str:
-    """
-    Mantém somente dígitos; valida 1 a 5 dígitos.
-    Não preenche com zeros; não trunca.
-    """
+    """Somente dígitos; valida 1 a 5 dígitos."""
     if valor is None:
         return ""
     s = re.sub(r"\D", "", str(valor))
@@ -178,11 +85,10 @@ def normaliza_matricula(valor: str) -> str:
     return s
 
 # =========================
-# CARGA WHITELIST (CACHE)
+# WHITELIST (CACHE)
 # =========================
 @st.cache_data(ttl=600)
 def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
-    # baixa conteúdo do RAW (compatível com repositórios públicos)
     resp = requests.get(url, timeout=15)
     if resp.status_code != 200:
         raise RuntimeError(f"Whitelist XLSX não encontrada ({resp.status_code}). Verifique a URL: {url}")
@@ -223,11 +129,10 @@ def obter_whitelist() -> pd.DataFrame:
         raise ValueError("Formato de whitelist inválido. Use 'xlsx' ou 'csv'.")
 
 # =========================
-# CARGA PLANILHA DE DESENHOS (CACHE)
+# PLANILHA DE DESENHOS (CACHE)
 # =========================
 @st.cache_data(ttl=600)
 def carregar_dados_desenhos(url: str) -> pd.DataFrame:
-    # Para arquivos RAW públicos, pd.read_excel com engine openpyxl funciona bem
     return pd.read_excel(url, engine="openpyxl")
 
 # =========================
@@ -249,12 +154,104 @@ def require_auth() -> bool:
     if authenticated and login_time:
         age = pd.Timestamp.utcnow() - login_time
         if age > timedelta(hours=SESSION_TTL_HOURS):
-            for k in ["authenticated", "login_time", "matricula", "nome", "funcao"]:
+            for k in ["authenticated", "login_time", "matricula", "nome", "funcao", "welcome_open"]:
                 st.session_state.pop(k, None)
             st.warning("Sua sessão expirou. Faça login novamente.")
             return False
         return True
     return authenticated
+
+# =========================
+# OVERLAY (botão FECHAR **dentro** da caixa)
+# =========================
+def render_welcome_overlay(nome: str, funcao: str):
+    """
+    Renderiza uma sobreposição (overlay) completa com backdrop e uma caixa central.
+    O botão FECHAR está DENTRO da caixa e fecha o overlay via query params (?welcome=0).
+    """
+    p = get_theme_palette()
+
+    # HTML completo do overlay (com botão dentro da caixa)
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        .overlay-backdrop {{
+          position: fixed; inset: 0;
+          background: {p['backdrop']};
+          backdrop-filter: blur(2px);
+          z-index: 9998;
+        }}
+        .overlay-box {{
+          position: fixed;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          width: min(640px, 88vw);
+          background: {p['panel']};
+          border: 1px solid {p['border']};
+          border-radius: 12px;
+          box-shadow: {p['shadow']};
+          z-index: 9999;
+          padding: 20px 22px 18px 22px;
+        }}
+        .overlay-title {{
+          font-weight: 800;
+          font-size: 18px;
+          color: {p['text']};
+          letter-spacing: 0.2px;
+          margin: 0 0 6px 0;
+        }}
+        .overlay-sub {{
+          font-size: 13px;
+          color: {p['muted']};
+          margin: 0 0 16px 0;
+        }}
+        .overlay-actions {{
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 4px;
+        }}
+        .overlay-button {{
+          background: {p['button_bg']};
+          color: {p['button_text']};
+          border: 0;
+          border-radius: 8px;
+          padding: 10px 16px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          cursor: pointer;
+        }}
+        .overlay-button:active {{ transform: translateY(1px); }}
+      </style>
+    </head>
+    <body>
+      <div class="overlay-backdrop"></div>
+      <div class="overlay-box">
+        <div class="overlay-title">
+          Seja bem-vindo, <span style="color:{p['accent']};">{nome}</span>!
+        </div>
+        <div class="overlay-sub">{funcao}</div>
+        <div class="overlay-actions">
+          <button class="overlay-button" id="closeBtn">FECHAR</button>
+        </div>
+      </div>
+
+      <script>
+        // Ao clicar, troca o query param welcome=0 e recarrega
+        document.getElementById('closeBtn').addEventListener('click', function() {{
+          const url = new URL(window.parent.location.href);
+          url.searchParams.set('welcome', '0');
+          window.parent.location.href = url.toString();
+        }});
+      </script>
+    </body>
+    </html>
+    """
+    # Altura suficiente para cobrir viewport (o componente ocupa o topo da página)
+    html(html_content, height=100, scrolling=False)
 
 # =========================
 # VIEWS
@@ -286,8 +283,13 @@ def login_view():
                 "nome": user["nome"],
                 "funcao": user["funcao"],
                 "login_time": pd.Timestamp.utcnow(),
-                "welcome_open": True,  # abre overlay após login
+                "welcome_open": True,
             })
+            # Define query param para abrir overlay
+            try:
+                st.experimental_set_query_params(welcome="1")
+            except Exception:
+                pass
             safe_rerun()
         else:
             st.error("Matrícula não encontrada na whitelist. Verifique e tente novamente.")
@@ -295,6 +297,7 @@ def login_view():
 def top_bar():
     render_logo_titulo("Desenhos P84")
 
+    # Linha de usuário + sair
     p = get_theme_palette()
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -311,6 +314,11 @@ Usuário: <span style="font-weight:600; color:{p['text']};">{nome}</span>
         if st.button("Sair"):
             for k in ["authenticated", "matricula", "nome", "funcao", "login_time", "welcome_open"]:
                 st.session_state.pop(k, None)
+            # Remove query param de overlay
+            try:
+                st.experimental_set_query_params()
+            except Exception:
+                pass
             st.success("Você saiu da sessão.")
             safe_rerun()
 
@@ -327,7 +335,17 @@ def ordenar_revisoes(revisoes):
     return sorted(numericas, key=int) + sorted(letras)
 
 def main_app():
-    # Cabeçalho + overlay de boas-vindas (se estiver aberto)
+    # Sincroniza estado do overlay com query params
+    try:
+        qp = st.experimental_get_query_params()
+        if qp.get("welcome", ["0"])[0] == "0":
+            st.session_state["welcome_open"] = False
+        elif qp.get("welcome", ["0"])[0] == "1":
+            st.session_state["welcome_open"] = True
+    except Exception:
+        pass
+
+    # Cabeçalho + overlay (se aberto)
     top_bar()
     if st.session_state.get("welcome_open", False):
         render_welcome_overlay(

@@ -310,8 +310,8 @@ def top_bar():
         st.markdown(
             f"""
             <div style="line-height:1.25;">
-              <div style="font-size:13px; color:{p['muted']};">
-                Usuário:
+              <div style="font-size:15px; color:{p['muted']};">
+                USUÁRIO:
               </div>
               <div style="font-weight:700; font-size:14px; color:{p['text']};">
                 {nome}
@@ -424,4 +424,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 

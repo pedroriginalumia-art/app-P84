@@ -4,7 +4,7 @@ from datetime import timedelta
 import re
 import requests
 import io
-from streamlit.components.v1 import html  # componente para overlay
+from streamlit.components.v1 import html  # para injetar overlay no parent
 
 # =========================
 # CONFIGURAÇÕES
@@ -19,7 +19,6 @@ WHITELIST_FORMAT = "xlsx"  # "xlsx" (atual) ou "csv"
 URL_WHITELIST_XLSX = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.xlsx"
 URL_WHITELIST_CSV  = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.csv"
 
-# Sessão expira depois de X horas (opcional)
 SESSION_TTL_HOURS = 8
 
 # =========================
@@ -33,7 +32,7 @@ def safe_rerun():
         st.experimental_rerun()
 
 def get_theme_palette():
-    """Paleta de alto contraste para claro/escuro."""
+    """Paleta alto contraste para claro/escuro."""
     base = st.get_option("theme.base") or "dark"
     if base == "light":
         return {
@@ -64,7 +63,7 @@ def render_logo_titulo(titulo: str, subtitulo: str | None = None):
     """
     Cabeçalho alinhado à esquerda usando colunas + st.image/st.markdown.
     """
-    col_logo, col_texto = st.columns([0.12, 0.88])  # alinha com widgets
+    col_logo, col_texto = st.columns([0.12, 0.88])  # segue a mesma borda dos widgets
     with col_logo:
         try:
             st.image(RAW_LOGO_URL, width=60)
@@ -162,96 +161,99 @@ def require_auth() -> bool:
     return authenticated
 
 # =========================
-# OVERLAY (botão FECHAR **dentro** da caixa)
+# OVERLAY: botão FECHAR **dentro** e overlay real no parent
 # =========================
 def render_welcome_overlay(nome: str, funcao: str):
     """
-    Renderiza uma sobreposição (overlay) completa com backdrop e uma caixa central.
-    O botão FECHAR está DENTRO da caixa e fecha o overlay via query params (?welcome=0).
+    Injeta o overlay no document.body da página principal (parent),
+    cobrindo toda a viewport e mantendo botão FECHAR dentro da caixa.
     """
     p = get_theme_palette()
+    html_code = f"""
+    <style>
+      /* estilos dentro do iframe, usados quando injetamos no parent */
+    </style>
+    <script>
+      (function() {{
+        const parentDoc = window.parent.document;
 
-    # HTML completo do overlay (com botão dentro da caixa)
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <style>
-        .overlay-backdrop {{
-          position: fixed; inset: 0;
-          background: {p['backdrop']};
-          backdrop-filter: blur(2px);
-          z-index: 9998;
+        // Se já existir um overlay aberto, não cria outro
+        if (parentDoc.getElementById('welcome-overlay-root')) {{
+          return;
         }}
-        .overlay-box {{
-          position: fixed;
-          top: 50%; left: 50%;
-          transform: translate(-50%, -50%);
-          width: min(640px, 88vw);
-          background: {p['panel']};
-          border: 1px solid {p['border']};
-          border-radius: 12px;
-          box-shadow: {p['shadow']};
-          z-index: 9999;
-          padding: 20px 22px 18px 22px;
-        }}
-        .overlay-title {{
-          font-weight: 800;
-          font-size: 18px;
-          color: {p['text']};
-          letter-spacing: 0.2px;
-          margin: 0 0 6px 0;
-        }}
-        .overlay-sub {{
-          font-size: 13px;
-          color: {p['muted']};
-          margin: 0 0 16px 0;
-        }}
-        .overlay-actions {{
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 4px;
-        }}
-        .overlay-button {{
-          background: {p['button_bg']};
-          color: {p['button_text']};
-          border: 0;
-          border-radius: 8px;
-          padding: 10px 16px;
-          font-weight: 800;
-          letter-spacing: 0.6px;
-          text-transform: uppercase;
-          cursor: pointer;
-        }}
-        .overlay-button:active {{ transform: translateY(1px); }}
-      </style>
-    </head>
-    <body>
-      <div class="overlay-backdrop"></div>
-      <div class="overlay-box">
-        <div class="overlay-title">
-          Seja bem-vindo, <span style="color:{p['accent']};">{nome}</span>!
-        </div>
-        <div class="overlay-sub">{funcao}</div>
-        <div class="overlay-actions">
-          <button class="overlay-button" id="closeBtn">FECHAR</button>
-        </div>
-      </div>
 
-      <script>
-        // Ao clicar, troca o query param welcome=0 e recarrega
-        document.getElementById('closeBtn').addEventListener('click', function() {{
-          const url = new URL(window.parent.location.href);
-          url.searchParams.set('welcome', '0');
-          window.parent.location.href = url.toString();
+        // Cria nó raiz
+        const root = parentDoc.createElement('div');
+        root.id = 'welcome-overlay-root';
+        root.innerHTML = `
+          <div id="welcome-overlay-backdrop" style="
+            position: fixed; inset: 0;
+            background: {p['backdrop']};
+            backdrop-filter: blur(2px);
+            z-index: 9998;
+          "></div>
+          <div id="welcome-overlay-box" style="
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(640px, 90vw);
+            background: {p['panel']};
+            border: 1px solid {p['border']};
+            border-radius: 12px;
+            box-shadow: {p['shadow']};
+            z-index: 9999;
+            padding: 20px 22px 18px 22px;
+          ">
+            <div style="font-weight: 800; font-size: 18px; color: {p['text']}; letter-spacing: 0.2px; margin: 0 0 8px 0;">
+              Seja bem-vindo, <span style="color:{p['accent']};">{nome}</span>!
+            </div>
+            <div style="font-size: 13px; color: {p['muted']}; margin: 0 0 16px 0;">
+              {funcao}
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+              <button id="welcome-overlay-close" style="
+                background: {p['button_bg']};
+                color: {p['button_text']};
+                border: 0;
+                border-radius: 8px;
+                padding: 10px 16px;
+                font-weight: 800;
+                letter-spacing: 0.6px;
+                text-transform: uppercase;
+                cursor: pointer;
+              ">FECHAR</button>
+            </div>
+          </div>
+        `;
+
+        parentDoc.body.appendChild(root);
+        // trava o scroll enquanto o overlay está aberto
+        const prevOverflow = parentDoc.body.style.overflow;
+        parentDoc.body.style.overflow = 'hidden';
+
+        const closeBtn = parentDoc.getElementById('welcome-overlay-close');
+        closeBtn.addEventListener('click', function() {{
+          try {{
+            // remove overlay do parent
+            const el = parentDoc.getElementById('welcome-overlay-root');
+            if (el) parentDoc.body.removeChild(el);
+            parentDoc.body.style.overflow = prevOverflow || '';
+            // atualiza query param para manter estado sincronizado
+            const url = new URL(window.parent.location.href);
+            url.searchParams.set('welcome', '0');
+            window.parent.location.href = url.toString();
+          }} catch (e) {{
+            // fallback: só remove overlay
+            const el = parentDoc.getElementById('welcome-overlay-root');
+            if (el) parentDoc.body.removeChild(el);
+            parentDoc.body.style.overflow = prevOverflow || '';
+          }}
         }});
-      </script>
-    </body>
-    </html>
+      }})();
+    </script>
     """
-    # Altura suficiente para cobrir viewport (o componente ocupa o topo da página)
-    html(html_content, height=100, scrolling=False)
+    # Não precisamos de uma altura grande aqui; o overlay é injetado no parent
+    html(html_code, height=0, scrolling=False)
 
 # =========================
 # VIEWS
@@ -283,7 +285,7 @@ def login_view():
                 "nome": user["nome"],
                 "funcao": user["funcao"],
                 "login_time": pd.Timestamp.utcnow(),
-                "welcome_open": True,
+                "welcome_open": True,  # abre overlay após login
             })
             # Define query param para abrir overlay
             try:
@@ -297,7 +299,6 @@ def login_view():
 def top_bar():
     render_logo_titulo("Desenhos P84")
 
-    # Linha de usuário + sair
     p = get_theme_palette()
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -314,9 +315,8 @@ Usuário: <span style="font-weight:600; color:{p['text']};">{nome}</span>
         if st.button("Sair"):
             for k in ["authenticated", "matricula", "nome", "funcao", "login_time", "welcome_open"]:
                 st.session_state.pop(k, None)
-            # Remove query param de overlay
             try:
-                st.experimental_set_query_params()
+                st.experimental_set_query_params()  # limpa params
             except Exception:
                 pass
             st.success("Você saiu da sessão.")
@@ -335,7 +335,7 @@ def ordenar_revisoes(revisoes):
     return sorted(numericas, key=int) + sorted(letras)
 
 def main_app():
-    # Sincroniza estado do overlay com query params
+    # Sincroniza estado welcome com query params
     try:
         qp = st.experimental_get_query_params()
         if qp.get("welcome", ["0"])[0] == "0":
@@ -345,8 +345,10 @@ def main_app():
     except Exception:
         pass
 
-    # Cabeçalho + overlay (se aberto)
+    # Cabeçalho
     top_bar()
+
+    # Overlay real (injetado no parent) — não deforma layout
     if st.session_state.get("welcome_open", False):
         render_welcome_overlay(
             st.session_state.get("nome", "—"),

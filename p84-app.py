@@ -19,35 +19,27 @@ WHITELIST_FORMAT = "csv"  # "csv" ou "xlsx"
 URL_WHITELIST_CSV = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.csv"
 URL_WHITELIST_XLSX = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.xlsx"
 
+# Sessão expira depois de X horas (opcional)
 SESSION_TTL_HOURS = 8
 
 # =========================
-# FUNÇÕES UTILITÁRIAS
+# UTILITÁRIOS
 # =========================
-def normaliza_matricula(valor: str) -> str:
-    """
-    Mantém somente dígitos, valida 1 a 5 dígitos.
-    Não preenche com zeros, não trunca.
-    """
-    if valor is None:
-        return ""
-    # mantém apenas dígitos
-    somente_digitos = re.sub(r"\D", "", str(valor))
-    # valida tamanho
-    if len(somente_digitos) == 0 or len(somente_digitos) > 5:
-        return ""  # inválida (tratada no fluxo)
-    return somente_digitos
+def carregar_logo_base64(path: str) -> str:
+    """Carrega a imagem e retorna base64 para <img src="/png;base64,..."""
+    logo = Image.open(path)
+    buffered = BytesIO()
+    logo.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
 
 def render_logo_titulo(titulo: str, subtitulo: str | None = None):
+    """Cabeçalho com logo e título usando HTML REAL (não escapado)."""
     try:
-        logo = Image.open("SEATRIUM.png")
-        buffered = BytesIO()
-        logo.save(buffered, format="PNG")
-        logo_base64 = base64.b64encode(buffered.getvalue()).decode()
+        logo_base64 = carregar_logo_base64("SEATRIUM.png")
         st.markdown(
             f"""
             <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
-                data:image/png;base64,{logo_base64}
+                <img:image/png;base64,{logo_base64}
                 <div>
                     <h1 style="margin:0;">{titulo}</h1>
                     {f'<div style="font-size:13px;color:#666;margin-top:2px;">{subtitulo}</div>' if subtitulo else ''}
@@ -61,21 +53,30 @@ def render_logo_titulo(titulo: str, subtitulo: str | None = None):
         if subtitulo:
             st.caption(subtitulo)
 
+def normaliza_matricula(valor: str) -> str:
+    """
+    Mantém somente dígitos; valida 1 a 5 dígitos.
+    Não preenche com zeros; não trunca.
+    """
+    if valor is None:
+        return ""
+    somente_digitos = re.sub(r"\D", "", str(valor))
+    if len(somente_digitos) == 0 or len(somente_digitos) > 5:
+        return ""
+    return somente_digitos
+
 # =========================
-# FUNÇÕES DE CARGA (CACHE)
+# CARGA (CACHE)
 # =========================
 @st.cache_data(ttl=600)
 def carregar_whitelist_csv(url: str) -> pd.DataFrame:
     df = pd.read_csv(url, dtype=str)
     df.columns = [c.strip().lower() for c in df.columns]
     required = {"matricula", "nome", "funcao"}
-    if not required.issubset(set(df.columns)):
+    if not required.issubset(df.columns):
         raise ValueError("A whitelist CSV deve conter as colunas: 'matricula', 'nome', 'funcao'.")
-    # Normaliza a coluna de matrícula para apenas dígitos e até 5
     df["matricula"] = df["matricula"].apply(normaliza_matricula)
-    # Remove linhas inválidas (matrículas fora do padrão)
     df = df[df["matricula"] != ""].copy()
-    # Tira espaços de nome/funcao
     for c in ["nome", "funcao"]:
         df[c] = df[c].astype(str).str.strip()
     return df
@@ -85,7 +86,7 @@ def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
     df = pd.read_excel(url, dtype=str, engine="openpyxl")
     df.columns = [c.strip().lower() for c in df.columns]
     required = {"matricula", "nome", "funcao"}
-    if not required.issubset(set(df.columns)):
+    if not required.issubset(df.columns):
         raise ValueError("A whitelist XLSX deve conter as colunas: 'matricula', 'nome', 'funcao'.")
     df["matricula"] = df["matricula"].apply(normaliza_matricula)
     df = df[df["matricula"] != ""].copy()
@@ -132,7 +133,7 @@ def require_auth() -> bool:
     return authenticated
 
 def login_view():
-    render_logo_titulo("Acesso restrito — Desenhos P84", None)
+    render_logo_titulo("Acesso restrito — Desenhos P84")
     st.write("Informe sua **matrícula (apenas números, até 5 dígitos)** para continuar.")
 
     with st.form("login_form", clear_on_submit=False):
@@ -140,7 +141,6 @@ def login_view():
         submitted = st.form_submit_button("Entrar")
 
     if submitted:
-        # validação rápida de formato
         if not re.fullmatch(r"\d{1,5}", matricula_input or ""):
             st.error("Matrícula inválida. Use apenas números (1 a 5 dígitos).")
             return
@@ -159,7 +159,7 @@ def login_view():
             st.session_state["funcao"] = user["funcao"]
             st.session_state["login_time"] = pd.Timestamp.utcnow()
 
-            # Boas-vindas personalizadas (nome em destaque, função menor)
+            # Boas-vindas personalizada
             st.markdown(
                 f"""
                 <div style="background:#e7f3ff;border:1px solid #b3d7ff;padding:12px;border-radius:8px;margin-top:8px;">
@@ -169,13 +169,12 @@ def login_view():
                 """,
                 unsafe_allow_html=True
             )
-
             st.experimental_rerun()
         else:
             st.error("Matrícula não encontrada na whitelist. Verifique e tente novamente.")
 
 def top_bar():
-    render_logo_titulo("Desenhos P84", None)
+    render_logo_titulo("Desenhos P84")
     col1, col2 = st.columns([1, 1])
     with col1:
         nome = st.session_state.get("nome", "—")

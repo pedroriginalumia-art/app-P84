@@ -5,69 +5,49 @@ import base64
 from io import BytesIO
 from datetime import timedelta
 import re
+from streamlit.components.v1 import html  # <<< usar o componente HTML
 
-# =========================
-# CONFIGURAÇÕES
-# =========================
 st.set_page_config(page_title="Desenhos P84", page_icon="📄", layout="centered")
 
-# --- URLs no GitHub ---
 URL_PLANILHA_DESENHOS = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/DESENHOS%20P84%20REV.xlsx"
-
-# Whitelist com colunas: matricula, nome, funcao
-WHITELIST_FORMAT = "csv"  # "csv" ou "xlsx"
+WHITELIST_FORMAT = "csv"
 URL_WHITELIST_CSV = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.csv"
 URL_WHITELIST_XLSX = "https://raw.githubusercontent.com/pedroriginalumia-art/app-P84/main/whitelist_matriculas.xlsx"
-
-# Sessão expira depois de X horas (opcional)
 SESSION_TTL_HOURS = 8
 
-# =========================
-# UTILITÁRIOS
-# =========================
 def carregar_logo_base64(path: str) -> str:
-    """Carrega a imagem e retorna base64 para <img src="/png;base64,..."""
     logo = Image.open(path)
-    buffered = BytesIO()
-    logo.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode()
+    buf = BytesIO()
+    logo.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 def render_logo_titulo(titulo: str, subtitulo: str | None = None):
-    """Cabeçalho com logo e título usando HTML REAL (não escapado)."""
+    """Renderiza o cabeçalho com HTML puro (sem Markdown), evitando indentação virar code block."""
     try:
-        logo_base64 = carregar_logo_base64("SEATRIUM.png")
-        st.markdown(
-            f"""
-            <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
-                <img:image/png;base64,{logo_base64}
-                <div>
-                    <h1 style="margin:0;">{titulo}</h1>
-                    {f'<div style="font-size:13px;color:#666;margin-top:2px;">{subtitulo}</div>' if subtitulo else ''}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        logo_b64 = carregar_logo_base64("SEATRIUM.png")
+        content = (
+            f'<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">'
+            f'  data:image/png;base64,{logo_b64}'
+            f'  <div>'
+            f'    <h1 style="margin:0;">{titulo}</h1>'
+            f'    {f"<div style=\'font-size:13px;color:#666;margin-top:2px;\'>{subtitulo}</div>" if subtitulo else ""}'
+            f'  </div>'
+            f'</div>'
         )
+        html(content, height=100)  # << renderiza sem passar pelo parser de Markdown
     except Exception:
         st.header(titulo)
         if subtitulo:
             st.caption(subtitulo)
 
 def normaliza_matricula(valor: str) -> str:
-    """
-    Mantém somente dígitos; valida 1 a 5 dígitos.
-    Não preenche com zeros; não trunca.
-    """
     if valor is None:
         return ""
-    somente_digitos = re.sub(r"\D", "", str(valor))
-    if len(somente_digitos) == 0 or len(somente_digitos) > 5:
+    s = re.sub(r"\D", "", str(valor))
+    if len(s) == 0 or len(s) > 5:
         return ""
-    return somente_digitos
+    return s
 
-# =========================
-# CARGA (CACHE)
-# =========================
 @st.cache_data(ttl=600)
 def carregar_whitelist_csv(url: str) -> pd.DataFrame:
     df = pd.read_csv(url, dtype=str)
@@ -95,22 +75,14 @@ def carregar_whitelist_xlsx(url: str) -> pd.DataFrame:
     return df
 
 def obter_whitelist() -> pd.DataFrame:
-    if WHITELIST_FORMAT == "csv":
-        return carregar_whitelist_csv(URL_WHITELIST_CSV)
-    elif WHITELIST_FORMAT == "xlsx":
-        return carregar_whitelist_xlsx(URL_WHITELIST_XLSX)
-    else:
-        raise ValueError("Formato de whitelist inválido. Use 'csv' ou 'xlsx'.")
+    return carregar_whitelist_csv(URL_WHITELIST_CSV) if WHITELIST_FORMAT == "csv" else carregar_whitelist_xlsx(URL_WHITELIST_XLSX)
 
 @st.cache_data(ttl=600)
 def carregar_dados_desenhos(url: str) -> pd.DataFrame:
     return pd.read_excel(url, engine="openpyxl")
 
-# =========================
-# AUTENTICAÇÃO
-# =========================
-def buscar_usuario_por_matricula(matricula_input: str, wl: pd.DataFrame) -> dict | None:
-    m = normaliza_matricula(matricula_input)
+def buscar_usuario_por_matricula(m_input: str, wl: pd.DataFrame) -> dict | None:
+    m = normaliza_matricula(m_input)
     if m == "":
         return None
     row = wl.loc[wl["matricula"] == m]
@@ -144,7 +116,6 @@ def login_view():
         if not re.fullmatch(r"\d{1,5}", matricula_input or ""):
             st.error("Matrícula inválida. Use apenas números (1 a 5 dígitos).")
             return
-
         try:
             wl = obter_whitelist()
         except Exception as e:
@@ -153,22 +124,15 @@ def login_view():
 
         user = buscar_usuario_por_matricula(matricula_input, wl)
         if user:
-            st.session_state["authenticated"] = True
-            st.session_state["matricula"] = user["matricula"]
-            st.session_state["nome"] = user["nome"]
-            st.session_state["funcao"] = user["funcao"]
-            st.session_state["login_time"] = pd.Timestamp.utcnow()
-
-            # Boas-vindas personalizada
-            st.markdown(
-                f"""
-                <div style="background:#e7f3ff;border:1px solid #b3d7ff;padding:12px;border-radius:8px;margin-top:8px;">
-                    <div style="font-weight:600;font-size:16px;">Seja bem-vindo, {user['nome']}!</div>
-                    <div style="font-size:13px;color:#555;margin-top:2px;">{user['funcao']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.session_state.update({
+                "authenticated": True,
+                "matricula": user["matricula"],
+                "nome": user["nome"],
+                "funcao": user["funcao"],
+                "login_time": pd.Timestamp.utcnow(),
+            })
+            st.success(f"Seja bem-vindo, {user['nome']}!")
+            st.caption(user["funcao"])
             st.experimental_rerun()
         else:
             st.error("Matrícula não encontrada na whitelist. Verifique e tente novamente.")
@@ -187,9 +151,6 @@ def top_bar():
             st.success("Você saiu da sessão.")
             st.experimental_rerun()
 
-# =========================
-# LÓGICA DO APP (PROTEGIDA)
-# =========================
 def buscar_desenho(df, termo):
     filtro = df['DESENHO'].astype(str).str.contains(termo, case=False, na=False)
     return df[filtro]
@@ -201,7 +162,6 @@ def ordenar_revisoes(revisoes):
 
 def main_app():
     top_bar()
-
     try:
         df = carregar_dados_desenhos(URL_PLANILHA_DESENHOS)
     except Exception as e:
@@ -209,7 +169,6 @@ def main_app():
         return
 
     termo_input = st.text_input("Digite parte do nome do desenho (ex: M05B-391):")
-
     if termo_input:
         resultados = buscar_desenho(df, termo_input)
         desenhos_encontrados = resultados['DESENHO'].unique()
@@ -218,7 +177,6 @@ def main_app():
             st.markdown("### 🔍 Desenhos Encontrados:")
             for desenho in desenhos_encontrados:
                 st.subheader(f"📄 {desenho}")
-
                 revisoes = resultados[resultados['DESENHO'] == desenho]['REVISÃO'].drop_duplicates().tolist()
                 revisoes_ordenadas = ordenar_revisoes(revisoes)
 
@@ -226,7 +184,6 @@ def main_app():
                 if len(revisoes_ordenadas) > 0:
                     cols = st.columns(len(revisoes_ordenadas))
                     ultima_revisao = revisoes_ordenadas[-1]
-
                     for i, rev in enumerate(revisoes_ordenadas):
                         destaque = (
                             "background-color:#ffd966;color:#000000;" if rev == ultima_revisao
@@ -236,7 +193,6 @@ def main_app():
                             f"<div style='{destaque}padding:6px;border-radius:6px;text-align:center;font-weight:bold;'>{rev}</div>",
                             unsafe_allow_html=True
                         )
-
                     for i, rev in enumerate(revisoes_ordenadas):
                         if rev == ultima_revisao:
                             cols[i].markdown(
@@ -245,14 +201,10 @@ def main_app():
                             )
                 else:
                     st.info("Nenhuma revisão encontrada para este desenho.")
-
                 st.markdown("---")
         else:
             st.info("Nenhum desenho encontrado com esse trecho.")
 
-# =========================
-# ROTEAMENTO
-# =========================
 def run():
     if require_auth():
         main_app()
@@ -261,4 +213,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-
